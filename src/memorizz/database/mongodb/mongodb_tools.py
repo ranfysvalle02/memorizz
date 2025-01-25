@@ -9,6 +9,9 @@ from pymongo.operations import SearchIndexModel
 import logging
 from dataclasses import dataclass
 
+# lets bring in the toolkit
+from mdb_toolkit import CustomMongoClient
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ class MongoDBTools:
         self.tools_collection = None
         
         try:
-            self.mongo_client = pymongo.MongoClient(self.config.mongo_uri, appname="memorizz.python.package")
+            self.mongo_client = pymongo.CustomMongoClient(self.config.mongo_uri, get_embedding=get_embedding, appname="memorizz.python.package")
             self.db = self.mongo_client[self.config.db_name]
 
             # Check if collection exists, create if it doesn't
@@ -250,25 +253,14 @@ class MongoDBTools:
             index_exists = any(index['name'] == self.config.vector_index_name for index in indexes)
             
             if not index_exists:
-                vector_index_definition = {
-                    "mappings": {
-                        "dynamic": True,
-                        "fields": {
-                            "embedding": {
-                                "dimensions": len(self.config.get_embedding("0")),
-                                "similarity": "cosine",
-                                "type": "knnVector",
-                            }
-                        }
-                    }
-                }
                 try:
                     # Create SearchIndexModel and use it in create_search_index
-                    search_index_model = SearchIndexModel(
-                        definition=vector_index_definition,
-                        name=self.config.vector_index_name
+                    self.mongo_client._create_search_index(
+                        database_name=self.database,
+                        collection_name=self.collection_name,
+                        index_name=self.config.vector_index_name,
+                        distance_metric="cosine"
                     )
-                    self.tools_collection.create_search_index(search_index_model)
                     logger.info(f"Vector search index '{self.config.vector_index_name}' created.")
                 except pymongo.errors.OperationFailure as e:
                     if e.code == 68 or "already exists" in str(e):
